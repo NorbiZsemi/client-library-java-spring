@@ -37,7 +37,7 @@
 		</repository>
 		<repository>
 			<id>arrowhead-client-skeleton</id>
-			<url>https://github.com/arrowhead-f/client-library-java-spring/raw/master/client-mvn-repo</url>
+			<url>https://github.com/NorbiZsemi/client-library-java-spring/raw/master/client-mvn-repo</url>
 		</repository>
 	</repositories>
 	<dependencies>
@@ -45,7 +45,7 @@
 		<dependency>
 			<groupId>eu.arrowhead</groupId>
 			<artifactId>core-client-skeleton</artifactId>
-			<version>4.1.3.7</version>
+			<version>4.1.3.11</version>
 		</dependency>
 	
 		<dependency>
