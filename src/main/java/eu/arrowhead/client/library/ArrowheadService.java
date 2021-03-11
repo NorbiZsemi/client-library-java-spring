@@ -1,16 +1,17 @@
 package eu.arrowhead.client.library;
 
 
+import java.math.BigInteger;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.Date;
 
 import javax.annotation.Resource;
 
+import eu.arrowhead.common.dto.shared.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,16 +31,7 @@ import eu.arrowhead.common.SSLProperties;
 import eu.arrowhead.common.Utilities;
 import eu.arrowhead.common.core.CoreSystem;
 import eu.arrowhead.common.core.CoreSystemService;
-import eu.arrowhead.common.dto.shared.EventPublishRequestDTO;
-import eu.arrowhead.common.dto.shared.OrchestrationFormRequestDTO;
 import eu.arrowhead.common.dto.shared.OrchestrationFormRequestDTO.Builder;
-import eu.arrowhead.common.dto.shared.OrchestrationResponseDTO;
-import eu.arrowhead.common.dto.shared.ServiceQueryFormDTO;
-import eu.arrowhead.common.dto.shared.ServiceQueryResultDTO;
-import eu.arrowhead.common.dto.shared.ServiceRegistryRequestDTO;
-import eu.arrowhead.common.dto.shared.ServiceRegistryResponseDTO;
-import eu.arrowhead.common.dto.shared.SubscriptionRequestDTO;
-import eu.arrowhead.common.dto.shared.SystemRequestDTO;
 import eu.arrowhead.common.exception.ArrowheadException;
 import eu.arrowhead.common.exception.AuthException;
 import eu.arrowhead.common.exception.BadPayloadException;
@@ -67,7 +59,11 @@ public class ArrowheadService {
 	
 	@Value(CommonConstants.$SERVICE_REGISTRY_PORT_WD)
 	private int serviceRegistryPort;
-	
+
+	// todo constant
+	@Value("${db.connection_string}")
+	private String dbConnectionString;
+
 	@Resource(name = CommonConstants.ARROWHEAD_CONTEXT)
 	private Map<String,Object> arrowheadContext;
 	
@@ -330,10 +326,193 @@ public class ArrowheadService {
 			logger.debug("Orchestration couldn't be proceeded due to the following reason: " +  CoreSystemService.ORCHESTRATION_SERVICE.name() + " not known by Arrowhead Context");
 			return null;
 		}
-		
-		return httpService.sendRequest(Utilities.createURI(getUriScheme(), uri.getAddress(), uri.getPort(), uri.getPath()), HttpMethod.POST, OrchestrationResponseDTO.class, request).getBody();
+
+		OrchestrationResponseDTO response = httpService.sendRequest(Utilities.createURI(getUriScheme(), uri.getAddress(), uri.getPort(), uri.getPath()), HttpMethod.POST, OrchestrationResponseDTO.class, request).getBody();
+		addOrchestrationLog(request, response);
+		return response;
 	}
-	
+
+	private void addOrchestrationLog(OrchestrationFormRequestDTO request, OrchestrationResponseDTO response) {
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+
+			SystemRequestDTO requesterSystem = request.getRequesterSystem();
+			List<OrchestrationResultDTO> responseDTOList = response.getResponse();
+			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			Date date = new Date(System.currentTimeMillis());
+			String now = formatter.format(date);
+
+			Long requesterId = getSystemId(requesterSystem.getSystemName(),requesterSystem.getAddress(), requesterSystem.getPort());
+
+			String orchestrationConnectionInsert =
+					"INSERT INTO orchestration_log (requester_id, provider_id, service_id, interface_id) VALUES (?,?,?,?) ";
+			for(int i = 0; i < responseDTOList.size(); i++) {
+				for(int j = 0; j < responseDTOList.size(); j++) {
+					PreparedStatement preparedStatement = null;
+					preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
+					preparedStatement.setLong(1, requesterId);
+					preparedStatement.setLong(2, responseDTOList.get(i).getProvider().getId());
+					preparedStatement.setLong(3, responseDTOList.get(i).getService().getId());
+					// todo kapcsolótábla
+					preparedStatement.setLong(4, responseDTOList.get(i).getInterfaces().get(j).getId());
+					preparedStatement.executeUpdate();
+				}
+			}
+
+			conn.close();
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+	}
+
+	public void monitorConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
+		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+
+			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			Date date = new Date(System.currentTimeMillis());
+			String now = formatter.format(date);
+
+			String orchestrationConnectionInsert =
+					"INSERT INTO orchestration_connection (requester_id, provider_id, service_id, interface_id) VALUES (?,?,?,?)  ON DUPLICATE KEY UPDATE updated_at=?, terminated_at=NULL";
+			Long interfaceId = getInterfaceId(interfaceName);
+			PreparedStatement preparedStatement = null;
+			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
+			preparedStatement.setLong(1, requesterId);
+			preparedStatement.setLong(2, orchestrationResult.getProvider().getId());
+			preparedStatement.setLong(3, orchestrationResult.getService().getId());
+			preparedStatement.setLong(4,  interfaceId);
+			preparedStatement.setString(5, now);
+			preparedStatement.executeUpdate();
+
+			conn.close();
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+	}
+
+	private void monitorCommunication(final HttpMethod httpMethod, final String address, final int port, final String serviceUri, final String interfaceName) {
+		Long requesterId = getSystemId(this.clientSystemName, this.clientSystemAddress, this.clientSystemPort);
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString, "", "");
+			String orchestrationConnectionInsert =
+					"INSERT INTO communication_log(requester_id, http_method, provider_address, provider_port, service_uri, interface_name) VALUES (?,?,?,?,?,?)";
+			PreparedStatement preparedStatement = null;
+			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
+			preparedStatement.setLong(1, requesterId);
+			preparedStatement.setString(2, httpMethod.toString());
+			preparedStatement.setString(3, address);
+			preparedStatement.setInt(4, port);
+			preparedStatement.setString(5, serviceUri);
+			preparedStatement.setString(6, interfaceName);
+			preparedStatement.executeUpdate();
+
+			conn.close();
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+	}
+
+	private void monitorCommunication(final HttpMethod httpMethod, final UriComponents uriComponents) {
+		Long requesterId = getSystemId(this.clientSystemName, this.clientSystemAddress, this.clientSystemPort);
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString, "", "");
+			String orchestrationConnectionInsert =
+					"INSERT INTO communication_log(requester_id, http_method, uri_components) VALUES (?,?,?)";
+			PreparedStatement preparedStatement = null;
+			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
+			preparedStatement.setLong(1, requesterId);
+			preparedStatement.setString(2, httpMethod.toString());
+			preparedStatement.setString(3, uriComponents.toString());
+			preparedStatement.executeUpdate();
+
+			conn.close();
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+	}
+
+	private long getSystemId(String name, String address, Integer port) {
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+			PreparedStatement preparedStatement = null;
+			String requesterIdQuery = "select id from system_ WHERE system_name=? AND address=? AND port=?;" ;
+			preparedStatement = conn.prepareStatement(requesterIdQuery);
+			preparedStatement.setString(1, name);
+			preparedStatement.setString(2, address);
+			preparedStatement.setInt(3, port);
+			ResultSet rs = preparedStatement.executeQuery() ;
+
+			Long requesterId = null;
+			if (rs.next()) {
+				requesterId = rs.getLong("id");
+			}
+			rs.close();
+			conn.close();
+			return requesterId;
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+		return -1;
+	}
+
+	private long getInterfaceId(String name) {
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+			PreparedStatement preparedStatement = null;
+			String requesterIdQuery = "select id from service_interface WHERE interface_name=?;" ;
+			preparedStatement = conn.prepareStatement(requesterIdQuery);
+			preparedStatement.setString(1, name);
+			ResultSet rs = preparedStatement.executeQuery() ;
+
+			Long interfaceId = null;
+			if (rs.next()) {
+				interfaceId = rs.getLong("id");
+			}
+			rs.close();
+			conn.close();
+			return interfaceId;
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+		return -1;
+	}
+
+	public void terminateConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
+		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
+		try {
+			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+
+			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			Date date = new Date(System.currentTimeMillis());
+			String now = formatter.format(date);
+
+			String orchestrationConnectionInsert =
+					"UPDATE orchestration_connection SET terminated_at=? WHERE requester_id=? AND provider_id=? AND service_id=? AND interface_id=?";
+			PreparedStatement preparedStatement = null;
+			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
+			preparedStatement.setString(1, now);
+			preparedStatement.setLong(2, requesterId);
+			preparedStatement.setLong(3, orchestrationResult.getProvider().getId());
+			preparedStatement.setLong(4, orchestrationResult.getService().getId());
+			Long interfaceId = getInterfaceId(interfaceName);
+			preparedStatement.setLong(5, interfaceId);
+			preparedStatement.executeUpdate();
+
+			conn.close();
+		} catch (Exception e) {
+			System.err.println("Got an exception! ");
+			System.err.println(e.getMessage());
+		}
+	}
+
 	//-------------------------------------------------------------------------------------------------
 	/**
 	 * Sends a http(s) 'orchestration/{systemId}' request to Orchestrator Core System.
@@ -413,6 +592,7 @@ public class ArrowheadService {
 		}
 		
 		final ResponseEntity<T> response = httpService.sendRequest(uri, httpMethod, responseType, payload);
+		monitorCommunication(httpMethod, address, port, serviceUri, interfaceName);
 		return response.getBody();
 	}
 	
@@ -451,6 +631,7 @@ public class ArrowheadService {
 		} 
 		
 		final ResponseEntity<T> response = httpService.sendRequest(uri, httpMethod, responseType, payload);
+		monitorCommunication(httpMethod, uriComponents);
 		return response.getBody();
 	}
 	

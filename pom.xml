@@ -102,8 +102,13 @@
 			<artifactId>bcpkix-jdk15on</artifactId>
 			<version>1.65</version>
 			<scope>compile</scope>
-		</dependency>  
-		
+		</dependency>
+
+		<dependency>
+			<groupId>mysql</groupId>
+			<artifactId>mysql-connector-java</artifactId>
+			<version>8.0.23</version>
+		</dependency>
 	</dependencies>
 	
 	<build>
