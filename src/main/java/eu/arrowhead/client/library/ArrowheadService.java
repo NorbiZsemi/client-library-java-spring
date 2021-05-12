@@ -333,7 +333,6 @@ public class ArrowheadService {
 	 * @throws UnavailableServerException when one of the core system involved in orchestration process is not available 
 	 */
 	public OrchestrationResponseDTO proceedOrchestration(final OrchestrationFormRequestDTO request) {
-		System.out.println("Test debug print!");
 		final CoreServiceUri uri = getCoreServiceUri(CoreSystemService.ORCHESTRATION_SERVICE);
 		if (uri == null) {
 			logger.debug("Orchestration couldn't be proceeded due to the following reason: " +  CoreSystemService.ORCHESTRATION_SERVICE.name() + " not known by Arrowhead Context");
