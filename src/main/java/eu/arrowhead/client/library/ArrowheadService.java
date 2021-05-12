@@ -74,10 +74,6 @@ public class ArrowheadService {
 	@Value(CommonConstants.$SERVICE_REGISTRY_PORT_WD)
 	private int serviceRegistryPort;
 
-	// todo constant
-	@Value("${db.connection_string}")
-	private String dbConnectionString;
-
 	@Resource(name = CommonConstants.ARROWHEAD_CONTEXT)
 	private Map<String,Object> arrowheadContext;
 	
@@ -350,33 +346,31 @@ public class ArrowheadService {
 	}
 
 	private void addOrchestrationLog(OrchestrationFormRequestDTO request, OrchestrationResponseDTO response) {
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+            final String uri = getBaseAddress() + ClientCommonConstants.ADD_ORCHESTRATION_LOG;
 
 			SystemRequestDTO requesterSystem = request.getRequesterSystem();
 			List<OrchestrationResultDTO> responseDTOList = response.getResponse();
-			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-			Date date = new Date(System.currentTimeMillis());
-			String now = formatter.format(date);
 
-			Long requesterId = getSystemId(requesterSystem.getSystemName(),requesterSystem.getAddress(), requesterSystem.getPort());
-
-			String orchestrationConnectionInsert =
-					"INSERT INTO orchestration_log (requester_id, provider_id, service_id, interface_id) VALUES (?,?,?,?) ";
+			JSONArray requestArray = new JSONArray();
 			for(int i = 0; i < responseDTOList.size(); i++) {
 				for(int j = 0; j < responseDTOList.size(); j++) {
-					PreparedStatement preparedStatement = null;
-					preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
-					preparedStatement.setLong(1, requesterId);
-					preparedStatement.setLong(2, responseDTOList.get(i).getProvider().getId());
-					preparedStatement.setLong(3, responseDTOList.get(i).getService().getId());
-					// todo kapcsolótábla
-					preparedStatement.setLong(4, responseDTOList.get(i).getInterfaces().get(j).getId());
-					preparedStatement.executeUpdate();
+                    JSONObject requestJson = new JSONObject();
+                    requestJson.put("requester_name", requesterSystem.getSystemName());
+                    requestJson.put("requester_address", requesterSystem.getAddress());
+                    requestJson.put("requester_port", requesterSystem.getPort());
+                    requestJson.put("provider_id", responseDTOList.get(i).getProvider().getId());
+                    requestJson.put("service_id",  responseDTOList.get(i).getService().getId());
+                    requestJson.put("interface_id", responseDTOList.get(i).getInterfaces().get(j).getId());
+                    requestArray.add(requestJson);
 				}
 			}
-
-			conn.close();
+            HttpPost httpRequest = new HttpPost(uri);
+            StringEntity params = new StringEntity(requestArray.toString());
+            httpRequest.addHeader("content-type", "application/json");
+            httpRequest.setEntity(params);
+            httpClient.execute(httpRequest);
 		} catch (Exception e) {
 			System.err.println("Got an exception! ");
 			System.err.println(e.getMessage());
@@ -384,16 +378,16 @@ public class ArrowheadService {
 	}
 
 	public void monitorConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
-		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-
 		try {
 			final String uri = getBaseAddress() + ClientCommonConstants.MONITOR_CONNECTION_URI;
 			JSONObject requestJson = new JSONObject();
-			requestJson.put("requester_id", requesterId);
+			requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
 			requestJson.put("provider_id", orchestrationResult.getProvider().getId());
 			requestJson.put("service_id", orchestrationResult.getService().getId());
-			requestJson.put("interface_id", getInterfaceId(interfaceName));
+			requestJson.put("interface_name", interfaceName);
 			JSONArray requestArray = new JSONArray();
 			requestArray.add(requestJson);
 			HttpPost request = new HttpPost(uri);
@@ -408,22 +402,25 @@ public class ArrowheadService {
 	}
 
 	private void monitorCommunication(final HttpMethod httpMethod, final String address, final int port, final String serviceUri, final String interfaceName) {
-		Long requesterId = getSystemId(this.clientSystemName, this.clientSystemAddress, this.clientSystemPort);
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString, "", "");
-			String orchestrationConnectionInsert =
-					"INSERT INTO communication_log(requester_id, http_method, provider_address, provider_port, service_uri, interface_name) VALUES (?,?,?,?,?,?)";
-			PreparedStatement preparedStatement = null;
-			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
-			preparedStatement.setLong(1, requesterId);
-			preparedStatement.setString(2, httpMethod.toString());
-			preparedStatement.setString(3, address);
-			preparedStatement.setInt(4, port);
-			preparedStatement.setString(5, serviceUri);
-			preparedStatement.setString(6, interfaceName);
-			preparedStatement.executeUpdate();
-
-			conn.close();
+            final String uri = getBaseAddress() + ClientCommonConstants.ADD_COMMUNICATION_LOG;
+            JSONObject requestJson = new JSONObject();
+            requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
+            requestJson.put("http_method", httpMethod.toString());
+            requestJson.put("provider_address", address);
+            requestJson.put("provider_port", port);
+            requestJson.put("service_uri", serviceUri);
+            requestJson.put("interface_name", interfaceName);
+            JSONArray requestArray = new JSONArray();
+            requestArray.add(requestJson);
+            HttpPost request = new HttpPost(uri);
+            StringEntity params = new StringEntity(requestArray.toString());
+            request.addHeader("content-type", "application/json");
+            request.setEntity(params);
+            httpClient.execute(request);
 		} catch (Exception e) {
 			System.err.println("Got an exception! ");
 			System.err.println(e.getMessage());
@@ -431,85 +428,38 @@ public class ArrowheadService {
 	}
 
 	private void monitorCommunication(final HttpMethod httpMethod, final UriComponents uriComponents) {
-
-		Long requesterId = getSystemId(this.clientSystemName, this.clientSystemAddress, this.clientSystemPort);
-		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString, "", "");
-			String orchestrationConnectionInsert =
-					"INSERT INTO communication_log(requester_id, http_method, uri_components) VALUES (?,?,?)";
-			PreparedStatement preparedStatement = null;
-			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
-			preparedStatement.setLong(1, requesterId);
-			preparedStatement.setString(2, httpMethod.toString());
-			preparedStatement.setString(3, uriComponents.toString());
-			preparedStatement.executeUpdate();
-
-			conn.close();
-		} catch (Exception e) {
-			System.err.println("Got an exception! ");
-			System.err.println(e.getMessage());
-		}
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+        try {
+            final String uri = getBaseAddress() + ClientCommonConstants.ADD_COMMUNICATION_LOG;
+            JSONObject requestJson = new JSONObject();
+            requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
+            requestJson.put("http_method", httpMethod.toString());
+            requestJson.put("uri_components", uriComponents.toString());
+            JSONArray requestArray = new JSONArray();
+            requestArray.add(requestJson);
+            HttpPost request = new HttpPost(uri);
+            StringEntity params = new StringEntity(requestArray.toString());
+            request.addHeader("content-type", "application/json");
+            request.setEntity(params);
+            httpClient.execute(request);
+        } catch (Exception e) {
+            System.err.println("Got an exception! ");
+            System.err.println(e.getMessage());
+        }
 	}
-
-	private long getSystemId(String name, String address, Integer port) {
-		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
-			PreparedStatement preparedStatement = null;
-			String requesterIdQuery = "select id from system_ WHERE system_name=? AND address=? AND port=?;" ;
-			preparedStatement = conn.prepareStatement(requesterIdQuery);
-			preparedStatement.setString(1, name);
-			preparedStatement.setString(2, address);
-			preparedStatement.setInt(3, port);
-			ResultSet rs = preparedStatement.executeQuery() ;
-
-			Long requesterId = null;
-			if (rs.next()) {
-				requesterId = rs.getLong("id");
-			}
-			rs.close();
-			conn.close();
-			return requesterId;
-		} catch (Exception e) {
-			System.err.println("Got an exception! ");
-			System.err.println(e.getMessage());
-		}
-		return -1;
-	}
-
-	private long getInterfaceId(String name) {
-		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
-			PreparedStatement preparedStatement = null;
-			String requesterIdQuery = "select id from service_interface WHERE interface_name=?;" ;
-			preparedStatement = conn.prepareStatement(requesterIdQuery);
-			preparedStatement.setString(1, name);
-			ResultSet rs = preparedStatement.executeQuery() ;
-
-			Long interfaceId = null;
-			if (rs.next()) {
-				interfaceId = rs.getLong("id");
-			}
-			rs.close();
-			conn.close();
-			return interfaceId;
-		} catch (Exception e) {
-			System.err.println("Got an exception! ");
-			System.err.println(e.getMessage());
-		}
-		return -1;
-	}
-
 	public void terminateConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
-		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-
 		try {
 			final String uri = getBaseAddress() + ClientCommonConstants.TERMINATE_CONNECTION_URI;
 			JSONObject requestJson = new JSONObject();
-			requestJson.put("requester_id", requesterId);
-			requestJson.put("provider_id", orchestrationResult.getProvider().getId());
-			requestJson.put("service_id", orchestrationResult.getService().getId());
-			requestJson.put("interface_id", getInterfaceId(interfaceName));
+            requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
+            requestJson.put("provider_id", orchestrationResult.getProvider().getId());
+            requestJson.put("service_id", orchestrationResult.getService().getId());
+            requestJson.put("interface_name", interfaceName);
 			JSONArray requestArray = new JSONArray();
 			requestArray.add(requestJson);
 			HttpPost request = new HttpPost(uri);
