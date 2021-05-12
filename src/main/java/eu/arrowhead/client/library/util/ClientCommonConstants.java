@@ -14,6 +14,8 @@ public class ClientCommonConstants {
 	public static final String TOKEN_SECURITY_FILTER_ENABLED = "token.security.filter.enabled";
 	public static final String $TOKEN_SECURITY_FILTER_ENABLED_WD = "${" + TOKEN_SECURITY_FILTER_ENABLED + ":true" + "}";
 	public static final String CORE_SERVICE_DEFINITION_SUFFIX = "-ah.core";
+	public static final String MONITOR_CONNECTION_URI = "/index.php?r=site/monitor-connection";
+	public static final String TERMINATE_CONNECTION_URI = "/index.php?r=site/terminate-connection";
 	
 	//=================================================================================================
 	// assistant methods

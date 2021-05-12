@@ -2,6 +2,8 @@ package eu.arrowhead.client.library;
 
 
 import java.math.BigInteger;
+import java.net.http.HttpClient;
+import java.net.http.HttpResponse;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.sql.*;
@@ -11,16 +13,28 @@ import java.util.Date;
 
 import javax.annotation.Resource;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.mysql.cj.xdevapi.JsonArray;
 import eu.arrowhead.common.dto.shared.*;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jose4j.json.internal.json_simple.JSONArray;
+import org.jose4j.json.internal.json_simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -72,6 +86,9 @@ public class ArrowheadService {
 	
 	@Autowired
 	private HttpService httpService;
+
+	@Autowired
+	private Environment env;
 	
 	private final static String INTERFACE_SECURE_FLAG = "SECURE";
 	private final static String INTERFACE_INSECURE_FLAG = "INSECURE";
@@ -368,29 +385,25 @@ public class ArrowheadService {
 
 	public void monitorConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
 		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
+		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+
 		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
-
-			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-			Date date = new Date(System.currentTimeMillis());
-			String now = formatter.format(date);
-
-			String orchestrationConnectionInsert =
-					"INSERT INTO orchestration_connection (requester_id, provider_id, service_id, interface_id) VALUES (?,?,?,?)  ON DUPLICATE KEY UPDATE updated_at=?, terminated_at=NULL";
-			Long interfaceId = getInterfaceId(interfaceName);
-			PreparedStatement preparedStatement = null;
-			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
-			preparedStatement.setLong(1, requesterId);
-			preparedStatement.setLong(2, orchestrationResult.getProvider().getId());
-			preparedStatement.setLong(3, orchestrationResult.getService().getId());
-			preparedStatement.setLong(4,  interfaceId);
-			preparedStatement.setString(5, now);
-			preparedStatement.executeUpdate();
-
-			conn.close();
-		} catch (Exception e) {
+			final String uri = getBaseAddress() + ClientCommonConstants.MONITOR_CONNECTION_URI;
+			JSONObject requestJson = new JSONObject();
+			requestJson.put("requester_id", requesterId);
+			requestJson.put("provider_id", orchestrationResult.getProvider().getId());
+			requestJson.put("service_id", orchestrationResult.getService().getId());
+			requestJson.put("interface_id", getInterfaceId(interfaceName));
+			JSONArray requestArray = new JSONArray();
+			requestArray.add(requestJson);
+			HttpPost request = new HttpPost(uri);
+			StringEntity params = new StringEntity(requestArray.toString());
+			request.addHeader("content-type", "application/json");
+			request.setEntity(params);
+			httpClient.execute(request);
+		} catch (Exception ex) {
 			System.err.println("Got an exception! ");
-			System.err.println(e.getMessage());
+			System.err.println(ex.getMessage());
 		}
 	}
 
@@ -418,6 +431,7 @@ public class ArrowheadService {
 	}
 
 	private void monitorCommunication(final HttpMethod httpMethod, final UriComponents uriComponents) {
+
 		Long requesterId = getSystemId(this.clientSystemName, this.clientSystemAddress, this.clientSystemPort);
 		try {
 			Connection conn = DriverManager.getConnection(dbConnectionString, "", "");
@@ -487,31 +501,35 @@ public class ArrowheadService {
 
 	public void terminateConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
 		Long requesterId = getSystemId(this.clientSystemName,this.clientSystemAddress, this.clientSystemPort);
+		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+
 		try {
-			Connection conn = DriverManager.getConnection(dbConnectionString,"","");
+			final String uri = getBaseAddress() + ClientCommonConstants.TERMINATE_CONNECTION_URI;
+			JSONObject requestJson = new JSONObject();
+			requestJson.put("requester_id", requesterId);
+			requestJson.put("provider_id", orchestrationResult.getProvider().getId());
+			requestJson.put("service_id", orchestrationResult.getService().getId());
+			requestJson.put("interface_id", getInterfaceId(interfaceName));
+			JSONArray requestArray = new JSONArray();
+			requestArray.add(requestJson);
+			HttpPost request = new HttpPost(uri);
+			StringEntity params = new StringEntity(requestArray.toString());
+			request.addHeader("content-type", "application/json");
+			request.setEntity(params);
+			CloseableHttpResponse response = httpClient.execute(request);
+			System.out.println(response.toString());
 
-			SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-			Date date = new Date(System.currentTimeMillis());
-			String now = formatter.format(date);
-
-			String orchestrationConnectionInsert =
-					"UPDATE orchestration_connection SET terminated_at=? WHERE requester_id=? AND provider_id=? AND service_id=? AND interface_id=?";
-			PreparedStatement preparedStatement = null;
-			preparedStatement = conn.prepareStatement(orchestrationConnectionInsert);
-			preparedStatement.setString(1, now);
-			preparedStatement.setLong(2, requesterId);
-			preparedStatement.setLong(3, orchestrationResult.getProvider().getId());
-			preparedStatement.setLong(4, orchestrationResult.getService().getId());
-			Long interfaceId = getInterfaceId(interfaceName);
-			preparedStatement.setLong(5, interfaceId);
-			preparedStatement.executeUpdate();
-
-			conn.close();
-		} catch (Exception e) {
+		} catch (Exception ex) {
+			// handle exception here
 			System.err.println("Got an exception! ");
-			System.err.println(e.getMessage());
+			System.err.println(ex.getMessage());
 		}
 	}
+
+	private String getBaseAddress() {
+		return "http://"+env.getProperty("monitoring_address") + ":" +env.getProperty("monitoring_port");
+	}
+
 
 	//-------------------------------------------------------------------------------------------------
 	/**
