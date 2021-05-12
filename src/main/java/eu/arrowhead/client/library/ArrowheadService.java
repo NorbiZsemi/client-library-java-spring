@@ -85,7 +85,10 @@ public class ArrowheadService {
 
 	@Autowired
 	private Environment env;
-	
+
+    @Value("${monitoring.access_token}")
+    private String monitoringAccessToken;
+
 	private final static String INTERFACE_SECURE_FLAG = "SECURE";
 	private final static String INTERFACE_INSECURE_FLAG = "INSECURE";
 	
@@ -368,6 +371,7 @@ public class ArrowheadService {
             HttpPost httpRequest = new HttpPost(uri);
             StringEntity params = new StringEntity(requestArray.toString());
             httpRequest.addHeader("content-type", "application/json");
+            httpRequest.addHeader("Authorization", monitoringAccessToken);
             httpRequest.setEntity(params);
             httpClient.execute(httpRequest);
 		} catch (Exception e) {
@@ -392,6 +396,7 @@ public class ArrowheadService {
 			HttpPost request = new HttpPost(uri);
 			StringEntity params = new StringEntity(requestArray.toString());
 			request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
 			request.setEntity(params);
 			httpClient.execute(request);
 		} catch (Exception ex) {
@@ -418,6 +423,7 @@ public class ArrowheadService {
             HttpPost request = new HttpPost(uri);
             StringEntity params = new StringEntity(requestArray.toString());
             request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
             request.setEntity(params);
             httpClient.execute(request);
 		} catch (Exception e) {
@@ -441,6 +447,7 @@ public class ArrowheadService {
             HttpPost request = new HttpPost(uri);
             StringEntity params = new StringEntity(requestArray.toString());
             request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
             request.setEntity(params);
             httpClient.execute(request);
         } catch (Exception e) {
@@ -464,6 +471,7 @@ public class ArrowheadService {
 			HttpPost request = new HttpPost(uri);
 			StringEntity params = new StringEntity(requestArray.toString());
 			request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
 			request.setEntity(params);
 			CloseableHttpResponse response = httpClient.execute(request);
 			System.out.println(response.toString());
