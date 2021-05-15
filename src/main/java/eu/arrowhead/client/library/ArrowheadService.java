@@ -347,6 +347,75 @@ public class ArrowheadService {
 		return response;
 	}
 
+    /**
+     * After the consumer application decided which producer to use this method must be called by it
+     * in order to report a new connection to the Monitoring Component
+     * @param orchestrationResult OrchestrationResultDTO which contains the information for the chosen producer
+     * @param interfaceName String containing the name of the communication'S  interface
+     */
+    public void monitorConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+        try {
+            final String uri = getBaseAddress() + ClientCommonConstants.MONITOR_CONNECTION_URI;
+            JSONObject requestJson = new JSONObject();
+            requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
+            requestJson.put("provider_id", orchestrationResult.getProvider().getId());
+            requestJson.put("service_id", orchestrationResult.getService().getId());
+            requestJson.put("interface_name", interfaceName);
+            JSONArray requestArray = new JSONArray();
+            requestArray.add(requestJson);
+            HttpPost request = new HttpPost(uri);
+            StringEntity params = new StringEntity(requestArray.toString());
+            request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
+            request.setEntity(params);
+            httpClient.execute(request);
+        } catch (Exception ex) {
+            System.err.println("Got an exception! ");
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    /**
+     * After the consumer application decided which producer to use this method must be called by it
+     * in order to report a terminated connection to the Monitoring Component
+     * @param orchestrationResult OrchestrationResultDTO which contains the information for the chosen producer
+     * @param interfaceName String containing the name of the communication'S  interface
+     */
+    public void terminateConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+        try {
+            final String uri = getBaseAddress() + ClientCommonConstants.TERMINATE_CONNECTION_URI;
+            JSONObject requestJson = new JSONObject();
+            requestJson.put("requester_name", this.clientSystemName);
+            requestJson.put("requester_address", this.clientSystemAddress);
+            requestJson.put("requester_port",  this.clientSystemPort);
+            requestJson.put("provider_id", orchestrationResult.getProvider().getId());
+            requestJson.put("service_id", orchestrationResult.getService().getId());
+            requestJson.put("interface_name", interfaceName);
+            JSONArray requestArray = new JSONArray();
+            requestArray.add(requestJson);
+            HttpPost request = new HttpPost(uri);
+            StringEntity params = new StringEntity(requestArray.toString());
+            request.addHeader("content-type", "application/json");
+            request.addHeader("Authorization", monitoringAccessToken);
+            request.setEntity(params);
+            CloseableHttpResponse response = httpClient.execute(request);
+            System.out.println(response.toString());
+
+        } catch (Exception ex) {
+            System.err.println("Got an exception! ");
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    /**
+     * Logs an orchestration request and response to the Monitoring Components
+     * @param request OrchestrationFormRequestDTO which represents the required payload of the http(s) request
+     * @param response OrchestrationResponseDTP which contains the response from the Orchestrator component
+     */
 	private void addOrchestrationLog(OrchestrationFormRequestDTO request, OrchestrationResponseDTO response) {
         CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		try {
@@ -380,31 +449,14 @@ public class ArrowheadService {
 		}
 	}
 
-	public void monitorConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
-		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-		try {
-			final String uri = getBaseAddress() + ClientCommonConstants.MONITOR_CONNECTION_URI;
-			JSONObject requestJson = new JSONObject();
-			requestJson.put("requester_name", this.clientSystemName);
-            requestJson.put("requester_address", this.clientSystemAddress);
-            requestJson.put("requester_port",  this.clientSystemPort);
-			requestJson.put("provider_id", orchestrationResult.getProvider().getId());
-			requestJson.put("service_id", orchestrationResult.getService().getId());
-			requestJson.put("interface_name", interfaceName);
-			JSONArray requestArray = new JSONArray();
-			requestArray.add(requestJson);
-			HttpPost request = new HttpPost(uri);
-			StringEntity params = new StringEntity(requestArray.toString());
-			request.addHeader("content-type", "application/json");
-            request.addHeader("Authorization", monitoringAccessToken);
-			request.setEntity(params);
-			httpClient.execute(request);
-		} catch (Exception ex) {
-			System.err.println("Got an exception! ");
-			System.err.println(ex.getMessage());
-		}
-	}
-
+    /**
+     * This method logs HTTP communication to the Monitoring Component
+     * @param httpMethod HttpMethod which is the HTTP verb of the query
+     * @param address String the address where the query was sent
+     * @param port int the port number where the query was sent
+     * @param serviceUri String the uri of the service
+     * @param interfaceName String the name of the interface of the query
+     */
 	private void monitorCommunication(final HttpMethod httpMethod, final String address, final int port, final String serviceUri, final String interfaceName) {
         CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		try {
@@ -432,6 +484,11 @@ public class ArrowheadService {
 		}
 	}
 
+    /**
+     * This method logs HTTP communication to the Monitoring Component
+     * @param httpMethod HttpMethod which is the HTTP verb of the query
+     * @param uriComponents UriComponents containing the URI of the query
+     */
 	private void monitorCommunication(final HttpMethod httpMethod, final UriComponents uriComponents) {
         CloseableHttpClient httpClient = HttpClientBuilder.create().build();
         try {
@@ -455,34 +512,11 @@ public class ArrowheadService {
             System.err.println(e.getMessage());
         }
 	}
-	public void terminateConnection(OrchestrationResultDTO orchestrationResult, String interfaceName) {
-		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-		try {
-			final String uri = getBaseAddress() + ClientCommonConstants.TERMINATE_CONNECTION_URI;
-			JSONObject requestJson = new JSONObject();
-            requestJson.put("requester_name", this.clientSystemName);
-            requestJson.put("requester_address", this.clientSystemAddress);
-            requestJson.put("requester_port",  this.clientSystemPort);
-            requestJson.put("provider_id", orchestrationResult.getProvider().getId());
-            requestJson.put("service_id", orchestrationResult.getService().getId());
-            requestJson.put("interface_name", interfaceName);
-			JSONArray requestArray = new JSONArray();
-			requestArray.add(requestJson);
-			HttpPost request = new HttpPost(uri);
-			StringEntity params = new StringEntity(requestArray.toString());
-			request.addHeader("content-type", "application/json");
-            request.addHeader("Authorization", monitoringAccessToken);
-			request.setEntity(params);
-			CloseableHttpResponse response = httpClient.execute(request);
-			System.out.println(response.toString());
 
-		} catch (Exception ex) {
-			// handle exception here
-			System.err.println("Got an exception! ");
-			System.err.println(ex.getMessage());
-		}
-	}
-
+    /**
+     * A private helper method to create the base address for the Monitoring API
+     * @return String the base url of the Monitoring API
+     */
 	private String getBaseAddress() {
 		return "http://"+env.getProperty("monitoring_address") + ":" +env.getProperty("monitoring_port");
 	}
